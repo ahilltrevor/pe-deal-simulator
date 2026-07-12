@@ -4,6 +4,9 @@ import {
   Lock, RotateCcw, Stamp, Newspaper, FileSearch, Scale, Wrench,
   BarChart2, HandCoins
 } from "lucide-react";
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, Cell, ResponsiveContainer, LabelList,
+} from "recharts";
 
 /* ---------------------------------------------------------------
    TOKENS
@@ -206,6 +209,55 @@ function BigStat({ label, value, good }) {
 }
 
 /* ---------------------------------------------------------------
+   VALUE CREATION BRIDGE
+   Entry/exit equity are sponsor-level (post-fee). EBITDA growth is
+   priced at the entry multiple; multiple expansion is then applied
+   to exit EBITDA. Debt paydown counts only FCF-funded deleveraging
+   (cumulativeOrganicPaydown) — covenant-cure equity is excluded.
+   "Fees & Other" is a plug so the bars always sum to exit equity.
+--------------------------------------------------------------- */
+const BRIDGE_COLORS = { total: C.gold, positive: C.green, negative: C.red };
+
+function buildValueBridgeSteps({ entryEquity, exitEquity, ebitdaGrowth, multipleExpansion, debtPaydown, dividendRecap, feesAndOther }) {
+  const middle = [
+    { name: "EBITDA Growth", value: ebitdaGrowth },
+    { name: "Multiple Expansion", value: multipleExpansion },
+    { name: "Debt Paydown", value: debtPaydown },
+    { name: "Dividend Recap", value: -dividendRecap },
+    { name: "Fees & Other", value: feesAndOther },
+  ];
+  const steps = [
+    { name: "Entry Equity", value: entryEquity, type: "total" },
+    ...middle.map((s) => ({ ...s, type: s.value >= 0 ? "positive" : "negative" })),
+    { name: "Exit Equity", value: exitEquity, type: "total" },
+  ];
+  let running = 0;
+  return steps.map((s) => {
+    if (s.type === "total") { running = s.value; return { ...s, base: 0, display: s.value }; }
+    const base = s.value >= 0 ? running : running + s.value;
+    running += s.value;
+    return { ...s, base, display: Math.abs(s.value) };
+  });
+}
+
+function ValueBridge({ steps }) {
+  return (
+    <ResponsiveContainer width="100%" height={280}>
+      <BarChart data={steps} margin={{ top: 20, right: 4, left: 4, bottom: 4 }}>
+        <XAxis dataKey="name" tick={{ fill: C.inkSoft, fontSize: 10 }} axisLine={{ stroke: C.line }} tickLine={false} interval={0} angle={-20} textAnchor="end" height={50} />
+        <YAxis hide />
+        <Tooltip formatter={(v, n, p) => [`£${p.payload.display.toFixed(2)}m`, ""]} contentStyle={{ fontFamily: fontSans, fontSize: 12, background: C.ink, color: C.paper, border: "none", borderRadius: 6 }} />
+        <Bar dataKey="base" stackId="a" fill="transparent" />
+        <Bar dataKey="display" stackId="a" radius={[3, 3, 3, 3]}>
+          {steps.map((entry, i) => <Cell key={i} fill={BRIDGE_COLORS[entry.type]} />)}
+          <LabelList dataKey="display" position="top" formatter={(v) => `£${v.toFixed(1)}m`} style={{ fontFamily: fontMono, fontSize: 10, fill: C.ink }} />
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+/* ---------------------------------------------------------------
    MAIN APP
 --------------------------------------------------------------- */
 export default function PEDealSimulator() {
@@ -232,6 +284,7 @@ export default function PEDealSimulator() {
   const [year, setYear] = useState(1);
   const [ebitdaCurrent, setEbitdaCurrent] = useState(0);
   const [debtBalance, setDebtBalance] = useState(0);
+  const [cumulativeOrganicPaydown, setCumulativeOrganicPaydown] = useState(0);
   const [additionalEquity, setAdditionalEquity] = useState(0);
   const [distributions, setDistributions] = useState(0);
   const [dividendRecapTaken, setDividendRecapTaken] = useState(false);
@@ -415,6 +468,7 @@ export default function PEDealSimulator() {
     const debtAfterMandatory = debtBalance - mandatoryAmort;
     const sweepAmount = Math.max(0, fcf) * econ.leverage.sweepPct;
     let newDebt = Math.max(0, debtAfterMandatory - sweepAmount);
+    setCumulativeOrganicPaydown((p) => p + (debtBalance - newDebt)); // FCF-funded only — the covenant cure below isn't real deleveraging
 
     if (effects.equityInjection) setAdditionalEquity((a) => a + effects.equityInjection / 1000);
     if (effects.exitMultipleBump) setBoltOnBump((b) => b + effects.exitMultipleBump);
@@ -510,7 +564,7 @@ export default function PEDealSimulator() {
     setDdSelected([]); setEbitdaBasis(null); setChosenMultiple(null); setGrowthKey(null);
     setOfferMultiple(null); setLeverageKey(null); setMgmtRollover(null); setEcon(null);
     setIcCondition(null); setIcSubmitted(false);
-    setYear(1); setEbitdaCurrent(0); setDebtBalance(0); setAdditionalEquity(0); setDistributions(0);
+    setYear(1); setEbitdaCurrent(0); setDebtBalance(0); setCumulativeOrganicPaydown(0); setAdditionalEquity(0); setDistributions(0);
     setDividendRecapTaken(false); setCovenantBreachCount(0); setMacroDrift(0); setJournal([]);
     setFocusKey(null); setPendingEvent(null); setYearOutcome(null);
     setGenericEventPool(["competitor", "macro", "boltOn", "poach"]); setBoltOnBump(0);
@@ -839,7 +893,25 @@ export default function PEDealSimulator() {
               <div>W&I: {exitResult.claim ? `claim consumed ${fmtM(exitResult.wiHoldback)} holdback` : "released in full, no claims"}.</div>
               <div>Total invested: {fmtM(exitResult.totalInvested)} · Total returned: {fmtM(exitResult.totalProceeds)}</div>
             </div>
-            <div style={{ fontFamily: fontMono, fontSize: 12, color: C.gold, marginBottom: 10 }}>+{exitResult.xp} XP</div>
+            <div style={{ fontFamily: fontSerif, fontWeight: 700, fontSize: 16, marginBottom: 2 }}>Value creation bridge</div>
+            <Expand label="How to read this">
+              Entry and exit equity are sponsor-level — after fees and management's rollover share. EBITDA growth
+              is priced at your entry multiple; multiple expansion is then applied to exit EBITDA. Debt paydown
+              counts only paydown funded by free cash flow, not equity injected to cure a covenant breach. Fees
+              &amp; Other nets out transaction costs, the exit fee, management's share, the W&amp;I outcome, and
+              any covenant-cure equity — whatever the other bars don't explain.
+            </Expand>
+            {(() => {
+              const entryEquity = econ.sponsorEntryEquity;
+              const exitEquity = exitResult.sponsorNet;
+              const ebitdaGrowth = (ebitdaCurrent - econ.entryEbitda) * offerMultiple;
+              const multipleExpansion = ebitdaCurrent * (exitResult.exitMultiple - offerMultiple);
+              const debtPaydown = cumulativeOrganicPaydown;
+              const feesAndOther = exitEquity - (entryEquity + ebitdaGrowth + multipleExpansion + debtPaydown - distributions);
+              const steps = buildValueBridgeSteps({ entryEquity, exitEquity, ebitdaGrowth, multipleExpansion, debtPaydown, dividendRecap: distributions, feesAndOther });
+              return <ValueBridge steps={steps} />;
+            })()}
+            <div style={{ fontFamily: fontMono, fontSize: 12, color: C.gold, marginTop: 4, marginBottom: 10 }}>+{exitResult.xp} XP</div>
             {exitResult.badges.length > 0 && (
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
                 {exitResult.badges.map((b) => <div key={b} style={{ display: "flex", alignItems: "center", gap: 4, background: "#F1E4CC", border: `1px solid ${C.gold}`, borderRadius: 20, padding: "3px 10px", fontSize: 11.5 }}><Award size={12} color={C.goldDark} /> {b}</div>)}
