@@ -909,7 +909,14 @@ export default function PEDealSimulator() {
               const debtPaydown = cumulativeOrganicPaydown;
               const feesAndOther = exitEquity - (entryEquity + ebitdaGrowth + multipleExpansion + debtPaydown - distributions);
               const steps = buildValueBridgeSteps({ entryEquity, exitEquity, ebitdaGrowth, multipleExpansion, debtPaydown, dividendRecap: distributions, feesAndOther });
-              return <ValueBridge steps={steps} />;
+              return (
+                <>
+                  <ValueBridge steps={steps} />
+                  <div style={{ fontFamily: fontMono, fontSize: 11, color: C.inkSoft, marginTop: 2, lineHeight: 1.5 }}>
+                    Chart basis: {econ.leverage.label.toLowerCase()} · {econ.mgmtRollover ? "10% mgmt rollover" : "no mgmt rollover"} · {fmtM(debtPaydown)} FCF-funded debt paydown (excludes covenant-cure equity).
+                  </div>
+                </>
+              );
             })()}
             <div style={{ fontFamily: fontMono, fontSize: 12, color: C.gold, marginTop: 4, marginBottom: 10 }}>+{exitResult.xp} XP</div>
             {exitResult.badges.length > 0 && (
