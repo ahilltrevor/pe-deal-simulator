@@ -521,6 +521,9 @@ export default function PEDealSimulator() {
     <div style={{ minHeight: "100vh", background: C.paper, backgroundImage: "radial-gradient(circle at 1px 1px, rgba(28,37,65,0.05) 1px, transparent 0)", backgroundSize: "18px 18px", fontFamily: fontSans, color: C.ink, padding: "20px 14px 60px" }}>
       <style>{FONT_IMPORT}</style>
       <div style={{ maxWidth: 480, margin: "0 auto 16px" }}>
+        <div style={{ fontFamily: fontMono, fontSize: 11, color: C.gold, letterSpacing: 1.5, fontWeight: 600, marginBottom: 4 }}>
+          PE DEAL SIMULATOR
+        </div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
           <div style={{ fontFamily: fontSerif, fontWeight: 700, fontSize: 20 }}>IC Memorandum</div>
           <div style={{ fontFamily: fontMono, fontSize: 11, color: C.inkSoft }}>CONFIDENTIAL</div>
